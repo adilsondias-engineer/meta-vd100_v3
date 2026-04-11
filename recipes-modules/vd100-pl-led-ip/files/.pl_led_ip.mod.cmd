@@ -1,0 +1,1 @@
+savedcmd_/work/yocto/sources/meta-vd100_v2/recipes-modules/vd100-pl-led-ip/files/pl_led_ip.mod := printf '%s\n'   pl_led_ip.o | awk '!x[$$0]++ { print("/work/yocto/sources/meta-vd100_v2/recipes-modules/vd100-pl-led-ip/files/"$$0) }' > /work/yocto/sources/meta-vd100_v2/recipes-modules/vd100-pl-led-ip/files/pl_led_ip.mod

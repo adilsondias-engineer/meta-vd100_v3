@@ -1,0 +1,57 @@
+diff --git a/drivers/misc/xilinx-ai-engine/ai-engine-clock.c b/drivers/misc/xilinx-ai-engine/ai-engine-clock.c
+index d628187..ff6fb48 100644
+--- a/drivers/misc/xilinx-ai-engine/ai-engine-clock.c
++++ b/drivers/misc/xilinx-ai-engine/ai-engine-clock.c
+@@ -268,6 +268,10 @@ int aie_part_release_tiles_from_user(struct aie_partition *apart,
+ int aie2ps_part_set_column_clock_from_user(struct aie_partition *apart,
+ 					   struct aie_column_args *args)
+ {
++	
++	dev_warn(&apart->dev, "SET_COLUMN_CLOCK: start=%u num=%u enable=%u\n",
++         args->start_col, args->num_cols, args->enable);
++
+ 	u32 part_end_col = apart->range.start.col + apart->range.size.col - 1;
+ 	struct aie_location locs;
+ 	struct aie_range range = {};
+diff --git a/drivers/misc/xilinx-ai-engine/ai-engine-dev.c b/drivers/misc/xilinx-ai-engine/ai-engine-dev.c
+index ccedcf1..0e9b52d 100644
+--- a/drivers/misc/xilinx-ai-engine/ai-engine-dev.c
++++ b/drivers/misc/xilinx-ai-engine/ai-engine-dev.c
+@@ -361,6 +361,9 @@ static long xilinx_ai_engine_ioctl(struct file *filp, unsigned int cmd,
+ 	void __user *argp = (void __user *)arg;
+ 	int ret;
+ 
++	dev_warn(&adev->dev, "AIE device ioctl: cmd=0x%x (nr=0x%x)\n",
++         cmd, _IOC_NR(cmd));
++		 
+ 	trace_xilinx_ai_engine_ioctl(adev, cmd);
+ 	switch (cmd) {
+ 	case AIE_ENQUIRE_PART_IOCTL:
+diff --git a/drivers/misc/xilinx-ai-engine/ai-engine-part.c b/drivers/misc/xilinx-ai-engine/ai-engine-part.c
+index 2dfa7db..d4a6071 100644
+--- a/drivers/misc/xilinx-ai-engine/ai-engine-part.c
++++ b/drivers/misc/xilinx-ai-engine/ai-engine-part.c
+@@ -63,6 +63,8 @@ static void aie_cal_loc(struct aie_device *adev,
+ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
+ 				   size_t len, u8 is_write)
+ {
++	
++
+ 	struct aie_device *adev;
+ 	u32 regend32, ttype;
+ 	u64 regoff, regend64;
+@@ -793,10 +795,14 @@ static int aie_part_mmap(struct file *fp, struct vm_area_struct *vma)
+ 
+ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
+ {
++
+ 	struct aie_partition *apart = fp->private_data;
+ 	void __user *argp = (void __user *)arg;
+ 	long ret;
+ 
++	dev_warn(&apart->dev, "aie_part_ioctl AIE partition ioctl: cmd=0x%x (nr=0x%x)\n", 
++         cmd, _IOC_NR(cmd));
++		 
+ 	trace_aie_part_ioctl(apart, _IOC_NR(cmd));
+ 	switch (cmd) {
+ 	case AIE_PARTITION_INIT_IOCTL:
