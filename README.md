@@ -19,8 +19,12 @@ vd100-aie-pipeline (Vitis 2025.2)
                     │   └─ xilinx-bootbin bbappend — injects AIE partitions
                     ├─ zocl.ko → AIE-ML v2 runtime driver
                     ├─ XRT → /opt/xilinx/xrt/
-                    ├─ vd100-ps-ma-client → MA crossover via AIE (XRT)
-                    │   └─ BUY/SELL/HOLD → TradingSignalLog.sol (Hardhat)
+                    ├─ vd100-ps-ma-client → MA crossover via AIE (XRT, batch)
+                    │   └─ golden test vector → BUY/SELL/HOLD validated on hardware
+                    ├─ vd100-ma-trading-signal → live Binance feed → signal → Hardhat
+                    │   ├─ SW mode: A72 MA crossover (~1440ns per block)
+                    │   ├─ AIE mode: XRT pipeline (integrated, benchmarked)
+                    │   └─ BUY/SELL → TradingSignalLog.sol (JSON-RPC → Hardhat)
                     └─ Ethernet, USB, I2C, GPIO, Sysmon (inherited from v2)
 ```
 
@@ -37,7 +41,8 @@ vd100-aie-pipeline (Vitis 2025.2)
 | XRT 2025.2 runtime | — | — | Y |
 | zocl kernel driver | — | — | Y |
 | AIE-ML v2 pipeline (BOOT.BIN CDOs) | — | — | Y |
-| `vd100-ps-ma-client` XRT app | — | — | Y |
+| `vd100-ps-ma-client` XRT app (batch) | — | — | Y |
+| `vd100-ma-trading-signal` (live Binance feed) | — | — | Y |
 | BOOT.BIN bbappend (aie_dev_part + aie_image) | — | — | Y |
 | Ethereum JSON-RPC signal logging | — | — | Y |
 
@@ -73,7 +78,8 @@ Vitis project. Before building, ensure the following are available:
 | `recipes-bsp/device-tree/` | DTS patches including zocl 32-IRQ node |
 | `recipes-bsp/u-boot/` | U-Boot configuration |
 | `recipes-bsp/vd100-firmware/` | Firmware artifacts |
-| `recipes-apps/` | `vd100-ps-ma-client` — XRT host application recipe |
+| `recipes-apps/vd100-ps-ma-client/` | XRT batch client — golden test vector, confirms AIE pipeline |
+| `recipes-apps/vd100-ma-trading-signal/` | Live Binance feed → SW/AIE MA → Hardhat smart contract |
 | `recipes-kernel/linux/linux-xlnx/` | Kernel config (`bsp.cfg`), optional debug patch |
 | `recipes-modules/` | Out-of-tree kernel modules |
 
@@ -182,17 +188,72 @@ The generated node uses `interrupts-extended = <&axi_intc_0 0 4>` through
 XRT is provided by `meta-xilinx-tools`. Enable in image recipe:
 
 ```bitbake
-IMAGE_INSTALL:append = " xrt zocl vd100-ps-ma-client"
+IMAGE_INSTALL:append = " xrt zocl vd100-ps-ma-client vd100-ma-trading-signal"
 ```
 
-XRT installs to `/opt/xilinx/xrt/` (not `/usr`). The `vd100-ps-ma-client` recipe
-passes `EXTRA_OECMAKE += "-DXRT_ROOT=${STAGING_DIR_TARGET}/opt/xilinx/xrt"` to
-CMake at build time.
+XRT installs to `/opt/xilinx/xrt/` (not `/usr`). Both app recipes pass
+`EXTRA_OECMAKE += "-DXRT_ROOT=${STAGING_DIR_TARGET}/opt/xilinx/xrt"` to CMake.
 
 Runtime requirements:
 - `zocl.ko` loaded (`lsmod | grep zocl`)
 - `libxrt_coreutil.so` + `libxrt_core.so` at `/opt/xilinx/xrt/lib/`
 - BOOT.BIN with AIE CDO partitions (see above)
+
+---
+
+## vd100-ma-trading-signal Recipe
+
+Located at `recipes-apps/vd100-ma-trading-signal/vd100-ma-trading-signal_1.0.bb`.
+
+Production streaming application — connects to Binance WebSocket, computes MA
+crossover on live BTCUSDT mid prices, posts BUY/SELL signals to an Ethereum
+smart contract via JSON-RPC.
+
+Recipe dependencies:
+
+```bitbake
+DEPENDS = "xrt spdlog boost nlohmann-json libcurl"
+```
+
+Usage on VD100:
+
+```bash
+# SW mode (production — 1440ns per block on A72)
+sudo vd100_ma_trading_signal /home/root/config.json
+
+# AIE mode (integrated, see performance notes)
+# Set "mode": "aie" in config.json
+sudo vd100_ma_trading_signal /home/root/config.json
+```
+
+`sudo` required — XRT needs root access to `/dev/dri/renderD128`.
+
+### Hardhat setup (on workstation)
+
+```bash
+npx hardhat node --hostname 0.0.0.0   # bind all interfaces so VD100 can reach it
+npx hardhat run scripts/deploy.js --network localhost
+```
+
+Contract address after first deploy: `0x5FbDB2315678afecb367f032d93F642f64180aa3`
+From account (Hardhat #0): `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`
+
+### AIE mode — performance findings
+
+The AIE pipeline is fully integrated and produces correct results. XRT lifecycle
+overhead on XCVE2302 (~47ms per call) dominates due to AMD's intentional
+`force_program` on every `hw_context` creation — required because AIE tile state
+is not cleanly reset otherwise (documented in XRT source `shim.cpp`).
+
+| Mode | Latency per block |
+|------|-------------------|
+| SW (A72) | ~1440ns |
+| AIE (XRT full lifecycle) | ~47ms |
+
+SW mode is the production path for per-tick latency. AIE mode wins for batch
+workloads (1000+ blocks per session). See
+[vd100-ma-trading-signal](https://github.com/adilsondias-engineer/vd100-ma-trading-signal)
+for full analysis.
 
 ---
 
@@ -322,7 +383,9 @@ scp <vd100-aie-pipeline>/vd100_ma_system_project/build/hw/binary_container_1.xcl
 | [versal-ai-edge-vd100-linux](https://github.com/adilsondias-engineer/versal-ai-edge-vd100-linux) | Root repo — meta-vd100_v3 is a submodule here |
 | [meta-vd100](https://github.com/adilsondias-engineer/meta-vd100) | v1 — SD boot, Ethernet, USB, SSH |
 | [meta-vd100_v2](https://github.com/adilsondias-engineer/meta-vd100_v2) | v2 — + I2C, LM75, PL LED, PS_KEY IRQ |
-| [vd100-aie-pipeline](https://github.com/adilsondias-engineer/vd100-aie-pipeline) | AIE pipeline — Vivado BD, Vitis system project, XRT app |
+| [vd100-aie-pipeline](https://github.com/adilsondias-engineer/vd100-aie-pipeline) | AIE pipeline — Vivado BD, Vitis system project, xclbin |
+| [vd100-ps-ma-client](https://github.com/adilsondias-engineer/vd100-ps-ma-client) | XRT batch client — golden test vector validation |
+| [vd100-ma-trading-signal](https://github.com/adilsondias-engineer/vd100-ma-trading-signal) | Live Binance feed → SW/AIE MA → Ethereum smart contract |
 
 ---
 
