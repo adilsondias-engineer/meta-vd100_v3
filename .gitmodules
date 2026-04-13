@@ -1,3 +1,6 @@
 [submodule "recipes-apps/vd100-ma-trading-signal"]
 	path = recipes-apps/vd100-ma-trading-signal
 	url = https://github.com/adilsondias-engineer/vd100-ma-trading-signal.git
+[submodule "recipes-apps/vd100-ps-ma-client"]
+	path = recipes-apps/vd100-ps-ma-client
+	url = https://github.com/adilsondias-engineer/vd100-ps-ma-client.git
