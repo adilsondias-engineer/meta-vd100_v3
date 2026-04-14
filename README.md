@@ -1,4 +1,4 @@
-# Versal AI Edge VD100 — AIE-ML v2 Pipeline + XRT + Ethereum
+# Versal AI Edge VD100 — AIE-ML Pipeline + XRT + Ethereum
 
 Custom Yocto Linux on the Alinx VD100 (XCVE2302-SFVA784-1LP-E-S) — AIE-ML moving average crossover pipeline via XRT, with trading signals logged on-chain to an Ethereum smart contract on a local Hardhat node.
 
